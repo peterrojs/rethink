@@ -6,6 +6,9 @@ import { allowExtendedType } from '@/util/casting'
 import AABBDevice from './aabb_device'
 import { ERRORS, STATES, COURSES, TEMPERATURES, SPINS, DRYING_MODES } from './washer_common'
 
+const STATUS_REQUEST = Buffer.from('F0ED1121010000001800', 'hex')
+const START_REQUEST_TIMEOUT_MS = 10_000
+
 // LG washer Y_V__F___W.B32QEUK (ThinQ2 device type 201).
 //
 // The modem reports the same double-status-frame envelope used by
@@ -38,10 +41,11 @@ export function buildF026Start(config: F026StartConfiguration): Buffer {
 }
 
 export default class Device extends AABBDevice {
-    // The packet is cached only while a fresh status says the washer is Ready,
-    // remotely armed, door-locked and error-free. It is consumed on first use.
+    // A button press first requests fresh status. Only the response to that
+    // request may supply the one-shot start packet, so an automation can safely
+    // run hours after Remote Start was armed without trusting cached state.
     private armedStartPacket?: Buffer
-    private lastStatusAt = 0
+    private pendingStartUntil = 0
 
     constructor(HA: Connection, thinq: Thinq2Device, meta: Metadata) {
         super(HA, thinq)
@@ -168,6 +172,10 @@ export default class Device extends AABBDevice {
         )
     }
 
+    start() {
+        this.send(STATUS_REQUEST)
+    }
+
     processAABB(buf: Buffer) {
         // Only these two frame types carry the compatible status block.
         // Completion diagnostics (for example 0x58/0x74) also start with
@@ -198,7 +206,13 @@ export default class Device extends AABBDevice {
         this.armedStartPacket = startAllowed
             ? buildF026Start({ course, spin, temp, rinse, drying, option11 })
             : undefined
-        this.lastStatusAt = Date.now()
+
+        if (this.pendingStartUntil) {
+            const packet = Date.now() <= this.pendingStartUntil ? this.armedStartPacket : undefined
+            this.pendingStartUntil = 0
+            this.armedStartPacket = undefined
+            if (packet) this.send(packet)
+        }
 
         this.publishProperty('error_message', ERRORS[error] ?? 'unknown')
         this.publishProperty('error', error ? 'ON' : 'OFF')
@@ -215,16 +229,10 @@ export default class Device extends AABBDevice {
     }
 
     setProperty(prop: string, _mqttValue: string) {
-        // The one-shot packet contains the exact configuration most recently
-        // observed on Joe. A retained command or stale state cannot start it.
-        if (
-            prop === 'start_configured_program' &&
-            this.armedStartPacket &&
-            Date.now() - this.lastStatusAt <= 30_000
-        ) {
-            const packet = this.armedStartPacket
+        if (prop === 'start_configured_program') {
             this.armedStartPacket = undefined
-            this.send(packet)
+            this.pendingStartUntil = Date.now() + START_REQUEST_TIMEOUT_MS
+            this.send(STATUS_REQUEST)
         }
     }
 }

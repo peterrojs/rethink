@@ -48,46 +48,54 @@ describe(MODEL_ID, () => {
         )
     })
 
-    test('starts Quick 14 with the exact captured F026 packet', () => {
+    test('requests current status when the device connects', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', SAMPLE_QUICK_14_ARMED)
+        dev.start()
+        assert.equal(hex(thinq.outbox[0]), 'AA0EF0ED1121010000001800B5BB')
+    })
+
+    test('queries fresh status, then starts Quick 14 with the exact captured F026 packet', () => {
+        const { thinq, dev } = makeDevice()
         dev.setProperty('start_configured_program', '')
-        assert.equal(hex(thinq.outbox[0]), 'AA16F0260C030202010000000001030000000000BBBB')
+        assert.equal(hex(thinq.outbox[0]), 'AA0EF0ED1121010000001800B5BB')
+        thinq.emit('data', SAMPLE_QUICK_14_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F0260C030202010000000001030000000000BBBB')
     })
 
     test('starts Delicate with the exact captured F026 packet', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', SAMPLE_DELICATE_ARMED)
         dev.setProperty('start_configured_program', '')
-        assert.equal(hex(thinq.outbox[0]), 'AA16F0262003050201000000000003000000000051BB')
+        thinq.emit('data', SAMPLE_DELICATE_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F0262003050201000000000003000000000051BB')
     })
 
     test('starts Cotton Rinse+ with the exact captured F026 packet', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', SAMPLE_COTTON_RINSE_PLUS_ARMED)
         dev.setProperty('start_configured_program', '')
-        assert.equal(hex(thinq.outbox[0]), 'AA16F02601030A04020000000000030000000000B8BB')
+        thinq.emit('data', SAMPLE_COTTON_RINSE_PLUS_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F02601030A04020000000000030000000000B8BB')
     })
 
     test('starts Wash + Dry with the exact captured F026 packet', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', SAMPLE_WASH_DRY_ARMED)
         dev.setProperty('start_configured_program', '')
-        assert.equal(hex(thinq.outbox[0]), 'AA16F02613030A03010200000000030000000000AABB')
+        thinq.emit('data', SAMPLE_WASH_DRY_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F02613030A03010200000000030000000000AABB')
     })
 
     test('consumes an armed start packet after one press', () => {
         const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
         thinq.emit('data', SAMPLE_DELICATE_ARMED)
-        dev.setProperty('start_configured_program', '')
-        dev.setProperty('start_configured_program', '')
-        assert.equal(thinq.outbox.length, 1)
+        thinq.emit('data', SAMPLE_DELICATE_ARMED)
+        assert.equal(thinq.outbox.length, 2)
     })
 
     test('never starts from an off status frame', () => {
         const { thinq, dev } = makeDevice()
-        thinq.emit('data', SAMPLE_OFF)
         dev.setProperty('start_configured_program', '')
-        assert.equal(thinq.outbox.length, 0)
+        thinq.emit('data', SAMPLE_OFF)
+        assert.equal(thinq.outbox.length, 1)
+        assert.equal(hex(thinq.outbox[0]), 'AA0EF0ED1121010000001800B5BB')
     })
 })
