@@ -20,6 +20,7 @@ const START_REQUEST_TIMEOUT_MS = 10_000
 // The shared table calls 0x3A Bedding, but this model exposes it as AI Wash.
 export const COURSES: Record<number, string> = {
     ...COMMON_COURSES,
+    0x1b: 'Hand/Wool',
     0x3a: 'AI Wash',
 }
 
