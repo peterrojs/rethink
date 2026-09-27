@@ -4,14 +4,9 @@ import { type Connection } from '../homeassistant'
 import { type Metadata } from '../thinq'
 import { allowExtendedType } from '@/util/casting'
 import AABBDevice from './aabb_device'
-import {
-    ERRORS,
-    STATES,
-    COURSES as COMMON_COURSES,
-    TEMPERATURES,
-    SPINS,
-    DRYING_MODES,
-} from './washer_common'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { ERRORS, STATES, COURSES as COMMON_COURSES, TEMPERATURES, SPINS, DRYING_MODES } from './washer_common'
 
 const STATUS_REQUEST = Buffer.from('F0ED1121010000001800', 'hex')
 const START_REQUEST_TIMEOUT_MS = 10_000
@@ -43,6 +38,60 @@ export interface F026StartConfiguration {
     rinse: number
     drying: number
     option11: number
+}
+
+export interface SavedArmedConfiguration extends F026StartConfiguration {
+    version: 1
+    deviceId: string
+    capturedAt: string
+    courseName: string
+    startCommandHex: string
+}
+
+function savedConfigurationPath(deviceId: string): string | undefined {
+    const stateDir = process.env.RETHINK_STATE_DIR
+    if (!stateDir) return undefined
+
+    const safeDeviceId = deviceId.replace(/[^a-zA-Z0-9._-]/g, '_')
+    return join(stateDir, `${safeDeviceId}-last-armed-configuration.json`)
+}
+
+export function loadSavedArmedConfiguration(path: string): SavedArmedConfiguration | undefined {
+    try {
+        const value = JSON.parse(readFileSync(path, 'utf-8')) as Partial<SavedArmedConfiguration>
+        if (
+            value.version === 1 &&
+            typeof value.deviceId === 'string' &&
+            typeof value.capturedAt === 'string' &&
+            typeof value.courseName === 'string' &&
+            typeof value.startCommandHex === 'string' &&
+            typeof value.course === 'number' &&
+            typeof value.spin === 'number' &&
+            typeof value.temp === 'number' &&
+            typeof value.rinse === 'number' &&
+            typeof value.drying === 'number' &&
+            typeof value.option11 === 'number'
+        )
+            return value as SavedArmedConfiguration
+    } catch {}
+    return undefined
+}
+
+function saveArmedConfiguration(path: string, value: SavedArmedConfiguration): void {
+    const temporaryPath = `${path}.tmp`
+    writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+    renameSync(temporaryPath, path)
+}
+
+function sameStartConfiguration(left: F026StartConfiguration | undefined, right: F026StartConfiguration): boolean {
+    return (
+        left?.course === right.course &&
+        left.spin === right.spin &&
+        left.temp === right.temp &&
+        left.rinse === right.rinse &&
+        left.drying === right.drying &&
+        left.option11 === right.option11
+    )
 }
 
 export function buildF026Start(config: F026StartConfiguration): Buffer {
@@ -118,6 +167,31 @@ export default class Device extends AABBDevice {
                         name: 'Course',
                         icon: 'mdi:pin-outline',
                     },
+                    last_armed_course: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-last-armed-course',
+                        state_topic: '$this/last_armed_course',
+                        name: 'Last armed course',
+                        icon: 'mdi:content-save-check-outline',
+                        entity_category: 'diagnostic',
+                    },
+                    last_armed_configuration: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-last-armed-configuration',
+                        state_topic: '$this/last_armed_configuration',
+                        name: 'Last armed configuration',
+                        icon: 'mdi:code-json',
+                        entity_category: 'diagnostic',
+                    },
+                    last_armed_at: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-last-armed-at',
+                        state_topic: '$this/last_armed_at',
+                        name: 'Last armed at',
+                        icon: 'mdi:clock-check-outline',
+                        device_class: 'timestamp',
+                        entity_category: 'diagnostic',
+                    },
                     temp: {
                         platform: 'sensor',
                         unique_id: '$deviceid-temp',
@@ -192,6 +266,56 @@ export default class Device extends AABBDevice {
                 },
             }),
         )
+
+        this.savedConfigurationFile = savedConfigurationPath(this.id)
+        const saved = this.savedConfigurationFile ? loadSavedArmedConfiguration(this.savedConfigurationFile) : undefined
+        if (saved) {
+            this.lastSavedConfiguration = saved
+            this.publishSavedConfiguration(saved)
+        }
+    }
+
+    private savedConfigurationFile?: string
+    private lastSavedConfiguration?: SavedArmedConfiguration
+    private wasStartAllowed = false
+
+    private publishSavedConfiguration(saved: SavedArmedConfiguration) {
+        this.publishProperty('last_armed_course', saved.courseName)
+        this.publishProperty(
+            'last_armed_configuration',
+            JSON.stringify({
+                course: saved.course,
+                spin: saved.spin,
+                temp: saved.temp,
+                rinse: saved.rinse,
+                drying: saved.drying,
+                option11: saved.option11,
+            }),
+        )
+        this.publishProperty('last_armed_at', saved.capturedAt)
+    }
+
+    private rememberArmedConfiguration(config: F026StartConfiguration, packet: Buffer) {
+        if (this.wasStartAllowed && sameStartConfiguration(this.lastSavedConfiguration, config)) return
+
+        const saved: SavedArmedConfiguration = {
+            version: 1,
+            deviceId: this.id,
+            capturedAt: new Date().toISOString(),
+            courseName: COURSES[config.course] ?? 'unknown',
+            ...config,
+            startCommandHex: packet.toString('hex').toUpperCase(),
+        }
+        this.lastSavedConfiguration = saved
+        this.publishSavedConfiguration(saved)
+
+        if (this.savedConfigurationFile) {
+            try {
+                saveArmedConfiguration(this.savedConfigurationFile, saved)
+            } catch (err) {
+                console.warn(`Could not persist Joe's armed configuration: ${String(err)}`)
+            }
+        }
     }
 
     start() {
@@ -223,11 +347,11 @@ export default class Device extends AABBDevice {
         const remoteStart = Boolean(buf[offset + 15] & 0x40)
         const doorLocked = !(buf[offset + 19] & 0x40)
 
-        const startAllowed =
-            status === 1 && course !== 0 && error === 0 && remoteStart && doorLocked
-        this.armedStartPacket = startAllowed
-            ? buildF026Start({ course, spin, temp, rinse, drying, option11 })
-            : undefined
+        const startAllowed = status === 1 && course !== 0 && error === 0 && remoteStart && doorLocked
+        const startConfiguration = { course, spin, temp, rinse, drying, option11 }
+        this.armedStartPacket = startAllowed ? buildF026Start(startConfiguration) : undefined
+        if (this.armedStartPacket) this.rememberArmedConfiguration(startConfiguration, this.armedStartPacket)
+        this.wasStartAllowed = startAllowed
 
         if (this.pendingStartUntil) {
             const packet = Date.now() <= this.pendingStartUntil ? this.armedStartPacket : undefined

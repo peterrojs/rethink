@@ -26,6 +26,11 @@ const configPath = resolve(process.argv[2] ?? './config.json')
 const configDir = dirname(configPath)
 const config = normalizeConfig(JSON.parse(stripJsonComments(readFileSync(configPath).toString('utf-8'))) as RawConfig)
 
+// Device handlers may opt into small durable state files alongside the main
+// configuration. In the HA add-on this resolves to its persistent /config
+// mount; in the standalone image it resolves to /app/data.
+if (!process.env.RETHINK_STATE_DIR) process.env.RETHINK_STATE_DIR = configDir
+
 config.ca_key_file = resolve(configDir, config.ca_key_file)
 config.ca_cert_file = resolve(configDir, config.ca_cert_file)
 if (config.bridge) config.bridge.storage_path = resolve(configDir, config.bridge.storage_path)

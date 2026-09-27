@@ -1,6 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import DUT, { buildF026Start, COURSES } from '@/cloud/devices/Y_V__F___W.B32QEUK'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import DUT, { buildF026Start, COURSES, loadSavedArmedConfiguration } from '@/cloud/devices/Y_V__F___W.B32QEUK'
 import type { Metadata } from '@/cloud/thinq'
 import { MockHAConnection, MockThinq2Device, buf, hex } from '@/tests/helpers/mocks'
 
@@ -181,6 +184,60 @@ describe(MODEL_ID, () => {
         dev.setProperty('start_configured_program', '')
         thinq.emit('data', SAMPLE_TUB_CLEAN_ARMED)
         assert.equal(hex(thinq.outbox[1]), 'AA16F02612030106010000000000030000000000A3BB')
+    })
+
+    test('persists the last armed configuration and an Off frame does not overwrite it', () => {
+        const stateDir = mkdtempSync(join(tmpdir(), 'rethink-joe-state-'))
+        const previousStateDir = process.env.RETHINK_STATE_DIR
+        process.env.RETHINK_STATE_DIR = stateDir
+
+        try {
+            const { ha, thinq } = makeDevice()
+            thinq.emit('data', SAMPLE_TUB_CLEAN_ARMED)
+
+            const stateFile = join(stateDir, `${DEVICE_ID}-last-armed-configuration.json`)
+            const armedFile = readFileSync(stateFile, 'utf-8')
+            const saved = loadSavedArmedConfiguration(stateFile)
+            assert.deepEqual(
+                saved && {
+                    version: saved.version,
+                    deviceId: saved.deviceId,
+                    courseName: saved.courseName,
+                    course: saved.course,
+                    spin: saved.spin,
+                    temp: saved.temp,
+                    rinse: saved.rinse,
+                    drying: saved.drying,
+                    option11: saved.option11,
+                    startCommandHex: saved.startCommandHex,
+                },
+                {
+                    version: 1,
+                    deviceId: DEVICE_ID,
+                    courseName: 'Tub Clean',
+                    course: 0x12,
+                    spin: 1,
+                    temp: 6,
+                    rinse: 1,
+                    drying: 0,
+                    option11: 0,
+                    startCommandHex: 'F02612030106010000000000030000000000',
+                },
+            )
+            assert.match(saved!.capturedAt, /^\d{4}-\d{2}-\d{2}T/)
+            assert.equal(ha.devices[DEVICE_ID].properties.last_armed_course, 'Tub Clean')
+
+            thinq.emit('data', SAMPLE_OFF)
+            assert.equal(readFileSync(stateFile, 'utf-8'), armedFile)
+
+            const restored = makeDevice()
+            assert.equal(restored.ha.devices[DEVICE_ID].properties.last_armed_course, 'Tub Clean')
+            assert.equal(restored.ha.devices[DEVICE_ID].properties.last_armed_at, saved!.capturedAt)
+        } finally {
+            if (previousStateDir === undefined) delete process.env.RETHINK_STATE_DIR
+            else process.env.RETHINK_STATE_DIR = previousStateDir
+            rmSync(stateDir, { recursive: true, force: true })
+        }
     })
 
     test('consumes an armed start packet after one press', () => {
