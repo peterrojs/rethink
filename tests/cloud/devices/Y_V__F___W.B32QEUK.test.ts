@@ -71,7 +71,8 @@ describe(MODEL_ID, () => {
         assert.equal(hex(thinq.outbox[1]), 'AA16F0260C030202010000000001030000000000BBBB')
     })
 
-    test('starts Delicate with the exact captured F026 packet', () => {
+    test('labels and starts Delicates with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x20], 'Delicates')
         const { thinq, dev } = makeDevice()
         dev.setProperty('start_configured_program', '')
         thinq.emit('data', SAMPLE_DELICATE_ARMED)

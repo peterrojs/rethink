@@ -22,6 +22,7 @@ export const COURSES: Record<number, string> = {
     ...COMMON_COURSES,
     0x07: 'Mixed Fabric',
     0x1b: 'Hand/Wool',
+    0x20: 'Delicates',
     0x3a: 'AI Wash',
 }
 
