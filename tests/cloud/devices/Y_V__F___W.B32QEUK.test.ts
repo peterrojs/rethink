@@ -31,6 +31,18 @@ const SAMPLE_HAND_WOOL_ARMED = buf(
 const SAMPLE_MIXED_FABRIC_ARMED = buf(
     'AAFF200A0060008D1B000100EC004E00000100330033070003010101000000004200000100002B00460000030000000000000000400000000100330033070003010101000000004200000100002B0046000003000000000000000000003F6ABB',
 )
+const SAMPLE_ALLERGY_CARE_ARMED = buf(
+    'AAFF200A0060008DF8000100EC004E000001023002302D00030A0601000000804200000400002B00460000050000000000000000C000000001023002302D00030A0601000000804200000400002B00460000050000000000000000000065A3BB',
+)
+const SAMPLE_EASY_CARE_ARMED = buf(
+    'AAFF200A0060008E3C000100EC004E000001023B023B0200030A0401000000004200000300002B004600000300000000000000004000000001023B023B0200030A0401000000004200000300002B0046000003000000000000000000002029BB',
+)
+const SAMPLE_TURBOWASH_39_ARMED = buf(
+    'AAFF200A0060009039000100EC004E00000100270027310003090401000000014200000200002B00460000010000000000000000400000000100270027310003090401000000014200000200002B004600000100000000000000000000F966BB',
+)
+const SAMPLE_ECO_40_60_ARMED = buf(
+    'AAFF200A0060009078000100EC004E000001031C031C0400030A0401000000004200000300002B004600000200000000000000004000000001031C031C0400030A0401000000004200000300002B004600000200000000000000000000138ABB',
+)
 const SAMPLE_OFF = buf(
     'AAFF200A0039000487000100EB00270000000000000E0C000000000000000000000000000A0011007100000100002900000000000000CB19BB',
 )
@@ -115,6 +127,38 @@ describe(MODEL_ID, () => {
         dev.setProperty('start_configured_program', '')
         thinq.emit('data', SAMPLE_MIXED_FABRIC_ARMED)
         assert.equal(hex(thinq.outbox[1]), 'AA16F02607030101010000000000030000000000B3BB')
+    })
+
+    test('labels and starts Allergy Care with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x2d], 'Allergy Care')
+        const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
+        thinq.emit('data', SAMPLE_ALLERGY_CARE_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F0262D030A06010000000080030000000000CFBB')
+    })
+
+    test('labels and starts Easy Care with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x02], 'Easy Care')
+        const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
+        thinq.emit('data', SAMPLE_EASY_CARE_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F02602030A04010000000000030000000000B8BB')
+    })
+
+    test('labels and starts TurboWash 39 with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x31], 'TurboWash 39')
+        const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
+        thinq.emit('data', SAMPLE_TURBOWASH_39_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F0263103090401000000000103000000000049BB')
+    })
+
+    test('labels and starts Eco 40-60 with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x04], 'Eco 40-60')
+        const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
+        thinq.emit('data', SAMPLE_ECO_40_60_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F02604030A04010000000000030000000000BABB')
     })
 
     test('consumes an armed start packet after one press', () => {
