@@ -51,7 +51,7 @@ export default class Device extends AABBDevice {
         super(HA, thinq)
         this.setConfig(
             allowExtendedType({
-                ...HADevice.config(meta, { name: 'LG Washer (read-only)' }),
+                ...HADevice.config(meta, { name: 'LG Washer (local)' }),
                 components: {
                     start_configured_program: {
                         platform: 'button',
