@@ -22,6 +22,8 @@ export const COURSES: Record<number, string> = {
     ...COMMON_COURSES,
     0x02: 'Easy Care',
     0x07: 'Mixed Fabric',
+    0x12: 'Tub Clean',
+    0x18: 'Dry Only',
     0x1b: 'Hand/Wool',
     0x20: 'Delicates',
     0x3a: 'AI Wash',
@@ -48,7 +50,9 @@ export function buildF026Start(config: F026StartConfiguration): Buffer {
     command[0] = 0xf0
     command[1] = 0x26
     command[2] = config.course
-    command[3] = 0x03
+    // Joe's Dry Only course uses command-mode 0x00. Wash programmes,
+    // including Wash + Dry, use 0x03.
+    command[3] = config.course === 0x18 ? 0x00 : 0x03
     command[4] = config.spin
     command[5] = config.temp
     command[6] = config.rinse
