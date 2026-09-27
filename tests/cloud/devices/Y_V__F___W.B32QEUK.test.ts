@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import DUT, { buildF026Start } from '@/cloud/devices/Y_V__F___W.B32QEUK'
+import DUT, { buildF026Start, COURSES } from '@/cloud/devices/Y_V__F___W.B32QEUK'
 import type { Metadata } from '@/cloud/thinq'
 import { MockHAConnection, MockThinq2Device, buf, hex } from '@/tests/helpers/mocks'
 
@@ -21,6 +21,9 @@ const SAMPLE_COTTON_RINSE_PLUS_ARMED = buf(
 )
 const SAMPLE_WASH_DRY_ARMED = buf(
     'AAFF200A006000896D000100EC004E000001040A040A1300030A0301020000000200000400002B004600000400000000000000004000000001040A040A1300030A0301020000004200000400002B0046000004000000000000000000004DE5BB',
+)
+const SAMPLE_AI_WASH_ARMED = buf(
+    'AAFF200A0060008C20000100EC004E000001003500353A0003020101000000004201000100002B004600000400000000000000000000000001003500353A0003020101000000004201000100002B004600000400000000000000008000EC16BB',
 )
 const SAMPLE_OFF = buf(
     'AAFF200A0039000487000100EB00270000000000000E0C000000000000000000000000000A0011007100000100002900000000000000CB19BB',
@@ -81,6 +84,14 @@ describe(MODEL_ID, () => {
         dev.setProperty('start_configured_program', '')
         thinq.emit('data', SAMPLE_WASH_DRY_ARMED)
         assert.equal(hex(thinq.outbox[1]), 'AA16F02613030A03010200000000030000000000AABB')
+    })
+
+    test('labels and starts AI Wash with the exact captured F026 packet', () => {
+        assert.equal(COURSES[0x3a], 'AI Wash')
+        const { thinq, dev } = makeDevice()
+        dev.setProperty('start_configured_program', '')
+        thinq.emit('data', SAMPLE_AI_WASH_ARMED)
+        assert.equal(hex(thinq.outbox[1]), 'AA16F0263A0302010100000000000300000000004FBB')
     })
 
     test('consumes an armed start packet after one press', () => {

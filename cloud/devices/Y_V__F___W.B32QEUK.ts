@@ -4,10 +4,24 @@ import { type Connection } from '../homeassistant'
 import { type Metadata } from '../thinq'
 import { allowExtendedType } from '@/util/casting'
 import AABBDevice from './aabb_device'
-import { ERRORS, STATES, COURSES, TEMPERATURES, SPINS, DRYING_MODES } from './washer_common'
+import {
+    ERRORS,
+    STATES,
+    COURSES as COMMON_COURSES,
+    TEMPERATURES,
+    SPINS,
+    DRYING_MODES,
+} from './washer_common'
 
 const STATUS_REQUEST = Buffer.from('F0ED1121010000001800', 'hex')
 const START_REQUEST_TIMEOUT_MS = 10_000
+
+// Model-specific labels verified on Joe's physical programme selector.
+// The shared table calls 0x3A Bedding, but this model exposes it as AI Wash.
+export const COURSES: Record<number, string> = {
+    ...COMMON_COURSES,
+    0x3a: 'AI Wash',
+}
 
 // LG washer Y_V__F___W.B32QEUK (ThinQ2 device type 201).
 //
